@@ -50,15 +50,237 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Routes
-app.get('/', (req, res) => {
-  res.json({ 
-    message: 'Welcome to Ms Kitchen API',
-    version: '1.0.0',
-    endpoints: {
-      recipes: '/api/recipes'
-    }
-  });
+app.get('/', async (req, res) => {
+  try {
+    const { query } = require('./db');
+    const result = await query('SELECT * FROM recipes ORDER BY created_at DESC');
+    const recipes = result.rows;
+    
+    // Generate HTML page
+    const html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Ms Kitchen - Recipe Collection</title>
+      <style>
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          min-height: 100vh;
+          padding: 20px;
+        }
+        .container {
+          max-width: 1200px;
+          margin: 0 auto;
+        }
+        header {
+          text-align: center;
+          color: white;
+          margin-bottom: 40px;
+        }
+        h1 {
+          font-size: 3rem;
+          margin-bottom: 10px;
+          text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        .subtitle {
+          font-size: 1.2rem;
+          opacity: 0.9;
+        }
+        .recipes-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+          gap: 25px;
+          margin-top: 30px;
+        }
+        .recipe-card {
+          background: white;
+          border-radius: 12px;
+          padding: 25px;
+          box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+          transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .recipe-card:hover {
+          transform: translateY(-5px);
+          box-shadow: 0 8px 15px rgba(0,0,0,0.2);
+        }
+        .recipe-title {
+          font-size: 1.5rem;
+          color: #333;
+          margin-bottom: 10px;
+          border-bottom: 2px solid #667eea;
+          padding-bottom: 8px;
+        }
+        .recipe-description {
+          color: #666;
+          margin-bottom: 15px;
+          line-height: 1.6;
+        }
+        .recipe-meta {
+          display: flex;
+          gap: 15px;
+          margin-bottom: 15px;
+          flex-wrap: wrap;
+        }
+        .meta-item {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          color: #555;
+          font-size: 0.9rem;
+        }
+        .meta-item strong {
+          color: #667eea;
+        }
+        .ingredients-section, .instructions-section {
+          margin-top: 15px;
+        }
+        .section-title {
+          font-size: 1rem;
+          color: #333;
+          margin-bottom: 8px;
+          font-weight: 600;
+        }
+        .ingredients-list, .instructions-list {
+          list-style: none;
+          padding-left: 0;
+        }
+        .ingredients-list li, .instructions-list li {
+          padding: 5px 0;
+          padding-left: 20px;
+          position: relative;
+          color: #555;
+          line-height: 1.5;
+        }
+        .ingredients-list li:before {
+          content: "🥄";
+          position: absolute;
+          left: 0;
+        }
+        .instructions-list li:before {
+          content: "👨‍🍳";
+          position: absolute;
+          left: 0;
+        }
+        .instructions-list li {
+          counter-increment: step;
+        }
+        .no-recipes {
+          text-align: center;
+          color: white;
+          font-size: 1.5rem;
+          margin-top: 50px;
+          padding: 40px;
+          background: rgba(255,255,255,0.1);
+          border-radius: 12px;
+        }
+        .api-link {
+          text-align: center;
+          margin-top: 30px;
+        }
+        .api-link a {
+          color: white;
+          text-decoration: none;
+          background: rgba(255,255,255,0.2);
+          padding: 10px 20px;
+          border-radius: 6px;
+          display: inline-block;
+          transition: background 0.2s;
+        }
+        .api-link a:hover {
+          background: rgba(255,255,255,0.3);
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <header>
+          <h1>🍳 Ms Kitchen</h1>
+          <p class="subtitle">Your Recipe Collection</p>
+        </header>
+        
+        ${recipes.length === 0 ? `
+          <div class="no-recipes">
+            <p>No recipes found in the database.</p>
+            <p style="margin-top: 20px; font-size: 1rem;">
+              <a href="/api/seed" style="color: white; text-decoration: underline;">Seed the database</a> to get started!
+            </p>
+          </div>
+        ` : `
+          <div class="recipes-grid">
+            ${recipes.map(recipe => `
+              <div class="recipe-card">
+                <h2 class="recipe-title">${escapeHtml(recipe.title)}</h2>
+                <p class="recipe-description">${escapeHtml(recipe.description || '')}</p>
+                <div class="recipe-meta">
+                  ${recipe.prep_time ? `<div class="meta-item"><strong>Prep:</strong> ${recipe.prep_time} min</div>` : ''}
+                  ${recipe.cook_time ? `<div class="meta-item"><strong>Cook:</strong> ${recipe.cook_time} min</div>` : ''}
+                  ${recipe.servings ? `<div class="meta-item"><strong>Serves:</strong> ${recipe.servings}</div>` : ''}
+                </div>
+                ${recipe.ingredients ? `
+                  <div class="ingredients-section">
+                    <div class="section-title">Ingredients:</div>
+                    <ul class="ingredients-list">
+                      ${JSON.parse(recipe.ingredients).map(ing => `<li>${escapeHtml(ing)}</li>`).join('')}
+                    </ul>
+                  </div>
+                ` : ''}
+                ${recipe.instructions ? `
+                  <div class="instructions-section">
+                    <div class="section-title">Instructions:</div>
+                    <ol class="instructions-list">
+                      ${JSON.parse(recipe.instructions).map(inst => `<li>${escapeHtml(inst)}</li>`).join('')}
+                    </ol>
+                  </div>
+                ` : ''}
+              </div>
+            `).join('')}
+          </div>
+        `}
+        
+        <div class="api-link">
+          <a href="/api/recipes">View API Endpoints</a>
+        </div>
+      </div>
+    </body>
+    </html>
+    `;
+    
+    res.send(html);
+  } catch (error) {
+    console.error('Error fetching recipes:', error);
+    res.status(500).send(`
+      <!DOCTYPE html>
+      <html>
+      <head><title>Error</title></head>
+      <body style="font-family: sans-serif; padding: 40px; text-align: center;">
+        <h1>Error loading recipes</h1>
+        <p>${escapeHtml(error.message)}</p>
+      </body>
+      </html>
+    `);
+  }
 });
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+  if (!text) return '';
+  const map = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  };
+  return text.replace(/[&<>"']/g, m => map[m]);
+}
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
