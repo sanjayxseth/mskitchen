@@ -49,6 +49,7 @@ The API will be available at `http://localhost:3000`
 
 - `GET /` - API information
 - `GET /health` - Health check
+- `POST /api/seed` - Seed database with sample recipes (add `?clear=true` to replace existing)
 - `GET /api/recipes` - Get all recipes
 - `GET /api/recipes/:id` - Get single recipe
 - `POST /api/recipes` - Create new recipe
