@@ -1,0 +1,26 @@
+# Fly.io configuration file
+# Run: fly launch (to create this automatically)
+# Or create manually for your app
+
+app = "ms-kitchen"
+primary_region = "iad"
+
+[build]
+
+[env]
+  PORT = "8080"
+  NODE_ENV = "production"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
+
