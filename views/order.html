@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Order - Ms Kitchen</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <h1 style="text-align: center;">🍳 Ms Kitchen</h1>
+    </div>
+  </header>
+
+  <main class="container-sm order-page">
+    <div id="loading" class="text-center">
+      <p>Loading menu...</p>
+    </div>
+    
+    <div id="orderContent" class="hidden">
+      <div class="order-page-header">
+        <h1>Today's Menu</h1>
+        <p class="date" id="menuDate"></p>
+        <p class="text-muted" id="deliveryWindow"></p>
+      </div>
+      
+      <div id="alertBox"></div>
+      
+      <!-- Menu Items -->
+      <div id="menuItems" class="menu-grid"></div>
+      
+      <!-- Order Summary -->
+      <div class="order-summary" id="orderSummary">
+        <h3>Your Order</h3>
+        <div id="selectedItems">
+          <p class="text-muted">Select items from the menu above</p>
+        </div>
+        <div class="summary-row summary-total" id="orderTotal">
+          <span>Total</span>
+          <span>₹0</span>
+        </div>
+      </div>
+      
+      <!-- Customer Info -->
+      <div class="card mt-20">
+        <h3 style="margin-bottom: 20px;">Your Details</h3>
+        <form id="orderForm">
+          <div class="form-group">
+            <label for="whatsappNumber">WhatsApp Number *</label>
+            <input type="tel" id="whatsappNumber" class="form-control" 
+                   placeholder="e.g., 9876543210" required pattern="[0-9]{10}">
+          </div>
+          <div class="form-group">
+            <label for="customerName">Your Name</label>
+            <input type="text" id="customerName" class="form-control" placeholder="Your name">
+          </div>
+          <div class="form-group">
+            <label for="customerAddress">Delivery Address *</label>
+            <textarea id="customerAddress" class="form-control" rows="3" 
+                      placeholder="Full delivery address" required></textarea>
+          </div>
+        </form>
+      </div>
+      
+      <!-- UPI Payment Section -->
+      <div class="upi-section" id="upiSection">
+        <h3>💳 Payment</h3>
+        <p>Pay via UPI after placing order</p>
+        <p class="upi-phone" id="upiPhone"></p>
+        <p class="text-muted">Amount: <strong id="upiAmount">₹0</strong></p>
+        <a href="#" id="upiPayLink" class="upi-pay-btn hidden">
+          📲 Pay with UPI App
+        </a>
+      </div>
+      
+      <!-- Place Order Button -->
+      <button type="button" class="btn btn-primary btn-lg btn-block mt-20" 
+              onclick="placeOrder()" id="placeOrderBtn" disabled>
+        🛒 Place Order
+      </button>
+    </div>
+    
+    <!-- Order Confirmation -->
+    <div id="orderConfirmation" class="hidden">
+      <div class="card text-center" style="padding: 40px;">
+        <h2 style="color: var(--success); margin-bottom: 20px;">✅ Order Placed!</h2>
+        <p style="font-size: 1.2rem; margin-bottom: 20px;">
+          Thank you for your order. Ms Kitchen will contact you soon.
+        </p>
+        <div class="alert alert-info">
+          <strong>Order ID:</strong> #<span id="confirmedOrderId"></span><br>
+          <strong>Amount:</strong> ₹<span id="confirmedAmount"></span>
+        </div>
+        <div class="upi-section mt-20">
+          <h3>💳 Complete Payment</h3>
+          <p>Please pay via UPI:</p>
+          <p class="upi-phone" id="confirmedUpiPhone"></p>
+          <a href="#" id="confirmedUpiLink" class="upi-pay-btn">
+            📲 Pay ₹<span id="confirmedPayAmount"></span> with UPI
+          </a>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Menu Not Found -->
+    <div id="menuNotFound" class="hidden">
+      <div class="card text-center" style="padding: 40px;">
+        <h2 style="color: var(--danger);">❌ Menu Not Available</h2>
+        <p class="text-muted mt-10">This menu is no longer available or has expired.</p>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // Get menu ID from URL
+    const pathParts = window.location.pathname.split('/');
+    const menuId = pathParts[pathParts.length - 1];
+    
+    let menu = null;
+    let quantities = {};
+    
+    async function loadMenu() {
+      try {
+        const res = await fetch(`/api/menus/${menuId}`);
+        if (!res.ok) {
+          showMenuNotFound();
+          return;
+        }
+        
+        menu = await res.json();
+        displayMenu(menu);
+        
+        // Check if returning customer
+        checkReturningCustomer();
+        
+      } catch (error) {
+        console.error('Error loading menu:', error);
+        showMenuNotFound();
+      }
+    }
+    
+    function showMenuNotFound() {
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('menuNotFound').classList.remove('hidden');
+    }
+    
+    function displayMenu(menu) {
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('orderContent').classList.remove('hidden');
+      
+      // Set header info
+      const dateStr = new Date(menu.date).toLocaleDateString('en-IN', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+      });
+      document.getElementById('menuDate').textContent = dateStr;
+      document.getElementById('deliveryWindow').textContent = 
+        `🚚 Delivery: ${menu.delivery_window_start} - ${menu.delivery_window_end}`;
+      
+      // Set UPI info
+      document.getElementById('upiPhone').textContent = menu.upi_phone_number;
+      
+      // Display menu items
+      let itemsHtml = '';
+      menu.items.forEach(item => {
+        quantities[item.id] = 0;
+        const available = item.quantity_available - (item.quantity_sold || 0);
+        const soldOut = available <= 0;
+        
+        itemsHtml += `
+          <div class="menu-item-card ${soldOut ? 'sold-out' : ''}" id="item-${item.id}">
+            <div class="menu-item-info">
+              <h3>${item.name}</h3>
+              <p class="price">₹${item.price}</p>
+              <p class="available">${soldOut ? 'Sold Out' : `${available} available`}</p>
+            </div>
+            <div class="quantity-selector">
+              <button class="quantity-btn" onclick="updateQuantity(${item.id}, -1)" ${soldOut ? 'disabled' : ''}>−</button>
+              <span class="quantity-value" id="qty-${item.id}">0</span>
+              <button class="quantity-btn" onclick="updateQuantity(${item.id}, 1)" ${soldOut ? 'disabled' : ''}>+</button>
+            </div>
+          </div>
+        `;
+      });
+      
+      document.getElementById('menuItems').innerHTML = itemsHtml;
+    }
+    
+    function updateQuantity(itemId, delta) {
+      const item = menu.items.find(i => i.id === itemId);
+      if (!item) return;
+      
+      const available = item.quantity_available - (item.quantity_sold || 0);
+      let newQty = quantities[itemId] + delta;
+      
+      if (newQty < 0) newQty = 0;
+      if (newQty > available) newQty = available;
+      
+      quantities[itemId] = newQty;
+      document.getElementById(`qty-${itemId}`).textContent = newQty;
+      
+      updateOrderSummary();
+    }
+    
+    function updateOrderSummary() {
+      const selectedItems = menu.items.filter(item => quantities[item.id] > 0);
+      
+      if (selectedItems.length === 0) {
+        document.getElementById('selectedItems').innerHTML = '<p class="text-muted">Select items from the menu above</p>';
+        document.getElementById('orderTotal').innerHTML = '<span>Total</span><span>₹0</span>';
+        document.getElementById('upiAmount').textContent = '₹0';
+        document.getElementById('upiPayLink').classList.add('hidden');
+        document.getElementById('placeOrderBtn').disabled = true;
+        return;
+      }
+      
+      let total = 0;
+      let html = '';
+      
+      selectedItems.forEach(item => {
+        const qty = quantities[item.id];
+        const subtotal = parseFloat(item.price) * qty;
+        total += subtotal;
+        
+        html += `
+          <div class="summary-row">
+            <span>${item.name} × ${qty}</span>
+            <span>₹${subtotal}</span>
+          </div>
+        `;
+      });
+      
+      document.getElementById('selectedItems').innerHTML = html;
+      document.getElementById('orderTotal').innerHTML = `<span>Total</span><span>₹${total}</span>`;
+      document.getElementById('upiAmount').textContent = `₹${total}`;
+      
+      // Update UPI pay link
+      const upiPhone = menu.upi_phone_number;
+      const upiLink = `upi://pay?pa=${upiPhone}@upi&pn=MsKitchen&am=${total}&cu=INR`;
+      document.getElementById('upiPayLink').href = upiLink;
+      document.getElementById('upiPayLink').classList.remove('hidden');
+      
+      document.getElementById('placeOrderBtn').disabled = false;
+    }
+    
+    function checkReturningCustomer() {
+      // Check localStorage for saved customer info
+      const savedWhatsApp = localStorage.getItem('msKitchenWhatsApp');
+      const savedName = localStorage.getItem('msKitchenName');
+      const savedAddress = localStorage.getItem('msKitchenAddress');
+      
+      if (savedWhatsApp) {
+        document.getElementById('whatsappNumber').value = savedWhatsApp;
+      }
+      if (savedName) {
+        document.getElementById('customerName').value = savedName;
+      }
+      if (savedAddress) {
+        document.getElementById('customerAddress').value = savedAddress;
+      }
+    }
+    
+    async function placeOrder() {
+      const whatsappNumber = document.getElementById('whatsappNumber').value.trim();
+      const customerName = document.getElementById('customerName').value.trim();
+      const customerAddress = document.getElementById('customerAddress').value.trim();
+      
+      // Validate
+      if (!whatsappNumber || whatsappNumber.length !== 10) {
+        showAlert('Please enter a valid 10-digit WhatsApp number.', 'error');
+        return;
+      }
+      
+      if (!customerAddress) {
+        showAlert('Please enter your delivery address.', 'error');
+        return;
+      }
+      
+      // Get selected items
+      const items = menu.items
+        .filter(item => quantities[item.id] > 0)
+        .map(item => ({
+          menu_item_id: item.id,
+          quantity: quantities[item.id]
+        }));
+      
+      if (items.length === 0) {
+        showAlert('Please select at least one item.', 'error');
+        return;
+      }
+      
+      // Save customer info for next time
+      localStorage.setItem('msKitchenWhatsApp', whatsappNumber);
+      localStorage.setItem('msKitchenName', customerName);
+      localStorage.setItem('msKitchenAddress', customerAddress);
+      
+      // Place order
+      try {
+        document.getElementById('placeOrderBtn').disabled = true;
+        document.getElementById('placeOrderBtn').textContent = 'Placing order...';
+        
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            menu_id: menu.id,
+            whatsapp_number: whatsappNumber,
+            name: customerName,
+            address: customerAddress,
+            items: items
+          })
+        });
+        
+        if (res.ok) {
+          const order = await res.json();
+          showConfirmation(order);
+        } else {
+          const error = await res.json();
+          showAlert(error.error || 'Failed to place order. Please try again.', 'error');
+          document.getElementById('placeOrderBtn').disabled = false;
+          document.getElementById('placeOrderBtn').textContent = '🛒 Place Order';
+        }
+      } catch (error) {
+        showAlert('Error placing order: ' + error.message, 'error');
+        document.getElementById('placeOrderBtn').disabled = false;
+        document.getElementById('placeOrderBtn').textContent = '🛒 Place Order';
+      }
+    }
+    
+    function showConfirmation(order) {
+      document.getElementById('orderContent').classList.add('hidden');
+      document.getElementById('orderConfirmation').classList.remove('hidden');
+      
+      document.getElementById('confirmedOrderId').textContent = order.id;
+      document.getElementById('confirmedAmount').textContent = order.order_value;
+      document.getElementById('confirmedUpiPhone').textContent = menu.upi_phone_number;
+      document.getElementById('confirmedPayAmount').textContent = order.order_value;
+      
+      // Set UPI link
+      const upiLink = `upi://pay?pa=${menu.upi_phone_number}@upi&pn=MsKitchen&am=${order.order_value}&cu=INR`;
+      document.getElementById('confirmedUpiLink').href = upiLink;
+    }
+    
+    function showAlert(message, type = 'success') {
+      document.getElementById('alertBox').innerHTML = `
+        <div class="alert alert-${type}">${message}</div>
+      `;
+      
+      // Scroll to alert
+      document.getElementById('alertBox').scrollIntoView({ behavior: 'smooth' });
+      
+      setTimeout(() => {
+        document.getElementById('alertBox').innerHTML = '';
+      }, 5000);
+    }
+    
+    // Load menu on page ready
+    loadMenu();
+  </script>
+</body>
+</html>
+

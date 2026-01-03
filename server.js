@@ -2,8 +2,15 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
+const path = require('path');
 const db = require('./db');
 const recipesRouter = require('./routes/recipes');
+const menusRouter = require('./routes/menus');
+const customersRouter = require('./routes/customers');
+const ordersRouter = require('./routes/orders');
+const reviewsRouter = require('./routes/reviews');
+const reportsRouter = require('./routes/reports');
+const adminRouter = require('./routes/admin');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -48,6 +55,9 @@ if (process.env.NODE_ENV === 'production' && process.env.AUTO_MIGRATE === 'true'
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static files
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Routes
 app.get('/', async (req, res) => {
@@ -522,6 +532,24 @@ app.post('/api/seed', async (req, res) => {
 });
 
 app.use('/api/recipes', recipesRouter);
+app.use('/api/menus', menusRouter);
+app.use('/api/customers', customersRouter);
+app.use('/api/orders', ordersRouter);
+app.use('/api/reviews', reviewsRouter);
+app.use('/api/reports', reportsRouter);
+
+// Admin pages
+app.use('/admin', adminRouter);
+
+// Customer order page
+app.get('/order/:menuId', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views/order.html'));
+});
+
+// Review page
+app.get('/review/:orderId', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views/review.html'));
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {

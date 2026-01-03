@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Review - Ms Kitchen</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <h1 style="text-align: center;">🍳 Ms Kitchen</h1>
+    </div>
+  </header>
+
+  <main class="container-sm order-page">
+    <div id="loading" class="text-center">
+      <p>Loading...</p>
+    </div>
+    
+    <!-- Review Form -->
+    <div id="reviewContent" class="hidden">
+      <div class="card text-center">
+        <h2 style="margin-bottom: 10px;">⭐ Rate Your Experience</h2>
+        <p class="text-muted">We'd love to hear your feedback!</p>
+        
+        <div id="alertBox" style="margin-top: 20px;"></div>
+        
+        <!-- Order Summary -->
+        <div style="background: var(--gray-light); padding: 15px; border-radius: 8px; margin: 20px 0; text-align: left;">
+          <p><strong>Order #<span id="orderId"></span></strong></p>
+          <p class="text-muted" id="orderDate"></p>
+          <p id="orderItems"></p>
+          <p><strong>Total: ₹<span id="orderAmount"></span></strong></p>
+        </div>
+        
+        <!-- Star Rating -->
+        <div style="margin: 30px 0;">
+          <p style="margin-bottom: 15px;"><strong>How was your meal?</strong></p>
+          <div class="star-rating">
+            <input type="radio" name="rating" value="5" id="star5">
+            <label for="star5" onclick="setRating(5)">⭐</label>
+            <input type="radio" name="rating" value="4" id="star4">
+            <label for="star4" onclick="setRating(4)">⭐</label>
+            <input type="radio" name="rating" value="3" id="star3">
+            <label for="star3" onclick="setRating(3)">⭐</label>
+            <input type="radio" name="rating" value="2" id="star2">
+            <label for="star2" onclick="setRating(2)">⭐</label>
+            <input type="radio" name="rating" value="1" id="star1">
+            <label for="star1" onclick="setRating(1)">⭐</label>
+          </div>
+          <p id="ratingText" class="text-muted" style="margin-top: 10px;">Tap to rate</p>
+        </div>
+        
+        <!-- Comments -->
+        <div class="form-group" style="text-align: left;">
+          <label for="comments">Comments (optional)</label>
+          <textarea id="comments" class="form-control" rows="4" 
+                    placeholder="Tell us what you liked or how we can improve..."></textarea>
+        </div>
+        
+        <button type="button" class="btn btn-primary btn-lg btn-block mt-20" 
+                onclick="submitReview()" id="submitBtn" disabled>
+          ✅ Submit Review
+        </button>
+      </div>
+    </div>
+    
+    <!-- Thank You -->
+    <div id="thankYou" class="hidden">
+      <div class="card text-center" style="padding: 40px;">
+        <h2 style="color: var(--success); margin-bottom: 20px;">🙏 Thank You!</h2>
+        <p style="font-size: 1.2rem; margin-bottom: 20px;">
+          Your feedback helps us serve you better.
+        </p>
+        <div id="submittedRating" style="font-size: 2rem; margin: 20px 0;"></div>
+        <p class="text-muted">We hope to serve you again soon!</p>
+      </div>
+    </div>
+    
+    <!-- Error -->
+    <div id="orderNotFound" class="hidden">
+      <div class="card text-center" style="padding: 40px;">
+        <h2 style="color: var(--danger);">❌ Order Not Found</h2>
+        <p class="text-muted mt-10">This order was not found or has already been reviewed.</p>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // Get order ID from URL
+    const pathParts = window.location.pathname.split('/');
+    const orderId = pathParts[pathParts.length - 1];
+    
+    let order = null;
+    let selectedRating = 0;
+    
+    async function loadOrder() {
+      try {
+        const res = await fetch(`/api/orders/${orderId}`);
+        if (!res.ok) {
+          showOrderNotFound();
+          return;
+        }
+        
+        order = await res.json();
+        
+        // Check if already reviewed
+        const reviewRes = await fetch(`/api/reviews?order_id=${orderId}`);
+        const reviews = await reviewRes.json();
+        
+        if (reviews.length > 0) {
+          showAlreadyReviewed(reviews[0]);
+          return;
+        }
+        
+        displayOrder(order);
+        
+      } catch (error) {
+        console.error('Error loading order:', error);
+        showOrderNotFound();
+      }
+    }
+    
+    function showOrderNotFound() {
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('orderNotFound').classList.remove('hidden');
+    }
+    
+    function showAlreadyReviewed(review) {
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('thankYou').classList.remove('hidden');
+      document.getElementById('submittedRating').textContent = '⭐'.repeat(review.rating);
+    }
+    
+    function displayOrder(order) {
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('reviewContent').classList.remove('hidden');
+      
+      document.getElementById('orderId').textContent = order.id;
+      document.getElementById('orderDate').textContent = new Date(order.created_at).toLocaleDateString('en-IN');
+      document.getElementById('orderAmount').textContent = order.order_value;
+      
+      // Display items
+      if (order.items && order.items.length > 0) {
+        const itemsList = order.items.map(i => `${i.item_name} × ${i.quantity}`).join(', ');
+        document.getElementById('orderItems').textContent = itemsList;
+      }
+    }
+    
+    function setRating(rating) {
+      selectedRating = rating;
+      
+      // Update visual
+      for (let i = 1; i <= 5; i++) {
+        const label = document.querySelector(`label[for="star${i}"]`);
+        if (i <= rating) {
+          label.style.color = '#ffc107';
+        } else {
+          label.style.color = '#ddd';
+        }
+      }
+      
+      // Update text
+      const texts = {
+        1: 'Poor 😞',
+        2: 'Fair 😐',
+        3: 'Good 🙂',
+        4: 'Very Good 😊',
+        5: 'Excellent! 🤩'
+      };
+      document.getElementById('ratingText').textContent = texts[rating];
+      
+      // Enable submit button
+      document.getElementById('submitBtn').disabled = false;
+    }
+    
+    async function submitReview() {
+      if (selectedRating === 0) {
+        showAlert('Please select a rating.', 'error');
+        return;
+      }
+      
+      const comments = document.getElementById('comments').value.trim();
+      
+      try {
+        document.getElementById('submitBtn').disabled = true;
+        document.getElementById('submitBtn').textContent = 'Submitting...';
+        
+        const res = await fetch('/api/reviews', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            order_id: order.id,
+            customer_id: order.customer_id,
+            rating: selectedRating,
+            comments: comments || null
+          })
+        });
+        
+        if (res.ok) {
+          document.getElementById('reviewContent').classList.add('hidden');
+          document.getElementById('thankYou').classList.remove('hidden');
+          document.getElementById('submittedRating').textContent = '⭐'.repeat(selectedRating);
+        } else {
+          const error = await res.json();
+          showAlert(error.error || 'Failed to submit review. Please try again.', 'error');
+          document.getElementById('submitBtn').disabled = false;
+          document.getElementById('submitBtn').textContent = '✅ Submit Review';
+        }
+      } catch (error) {
+        showAlert('Error submitting review: ' + error.message, 'error');
+        document.getElementById('submitBtn').disabled = false;
+        document.getElementById('submitBtn').textContent = '✅ Submit Review';
+      }
+    }
+    
+    function showAlert(message, type = 'success') {
+      document.getElementById('alertBox').innerHTML = `
+        <div class="alert alert-${type}">${message}</div>
+      `;
+      setTimeout(() => {
+        document.getElementById('alertBox').innerHTML = '';
+      }, 5000);
+    }
+    
+    // Load order on page ready
+    loadOrder();
+  </script>
+</body>
+</html>
+

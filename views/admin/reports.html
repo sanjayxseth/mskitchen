@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reports - Ms Kitchen</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <div class="header-nav">
+        <h1>🍳 Ms Kitchen</h1>
+        <nav class="nav-links">
+          <a href="/admin">Dashboard</a>
+          <a href="/admin/menu">Create Menu</a>
+          <a href="/admin/orders">Orders</a>
+          <a href="/admin/reports" class="active">Reports</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main class="container" style="padding: 30px 20px;">
+    <h2 style="margin-bottom: 20px;">Reports & Analytics</h2>
+    
+    <!-- Date Range Filter -->
+    <div class="card">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="startDate">Start Date</label>
+          <input type="date" id="startDate" class="form-control">
+        </div>
+        <div class="form-group">
+          <label for="endDate">End Date</label>
+          <input type="date" id="endDate" class="form-control">
+        </div>
+        <div class="form-group" style="display: flex; align-items: flex-end;">
+          <button class="btn btn-primary" onclick="loadReports()">📊 Generate Reports</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Report Tabs -->
+    <div class="card">
+      <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+        <button class="btn btn-primary" onclick="showReport('customers')" id="tab-customers">👥 Customer Values</button>
+        <button class="btn btn-outline" onclick="showReport('items')" id="tab-items">📦 Item Orders</button>
+        <button class="btn btn-outline" onclick="showReport('ratings')" id="tab-ratings">⭐ Item Ratings</button>
+      </div>
+      
+      <!-- Customer Order Values Report -->
+      <div id="report-customers">
+        <div class="card-header">
+          <h3>Customer Order Values</h3>
+          <a href="#" class="btn btn-sm btn-secondary" id="download-customers" onclick="downloadPDF('customers')">📥 Download PDF</a>
+        </div>
+        <div id="customers-content">
+          <p class="text-muted">Select a date range and click "Generate Reports"</p>
+        </div>
+      </div>
+      
+      <!-- Item Order Counts Report -->
+      <div id="report-items" class="hidden">
+        <div class="card-header">
+          <h3>Item Order Counts</h3>
+          <a href="#" class="btn btn-sm btn-secondary" id="download-items" onclick="downloadPDF('items')">📥 Download PDF</a>
+        </div>
+        <div id="items-content">
+          <p class="text-muted">Select a date range and click "Generate Reports"</p>
+        </div>
+      </div>
+      
+      <!-- Item Ratings Report -->
+      <div id="report-ratings" class="hidden">
+        <div class="card-header">
+          <h3>Item Average Ratings</h3>
+          <a href="#" class="btn btn-sm btn-secondary" id="download-ratings" onclick="downloadPDF('ratings')">📥 Download PDF</a>
+        </div>
+        <div id="ratings-content">
+          <p class="text-muted">Select a date range and click "Generate Reports"</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // Set default date range (last 30 days)
+    const today = new Date();
+    const thirtyDaysAgo = new Date(today);
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+    
+    document.getElementById('endDate').valueAsDate = today;
+    document.getElementById('startDate').valueAsDate = thirtyDaysAgo;
+    
+    let currentReport = 'customers';
+    
+    function showReport(reportType) {
+      // Hide all reports
+      document.getElementById('report-customers').classList.add('hidden');
+      document.getElementById('report-items').classList.add('hidden');
+      document.getElementById('report-ratings').classList.add('hidden');
+      
+      // Reset tab styles
+      document.getElementById('tab-customers').classList.remove('btn-primary');
+      document.getElementById('tab-customers').classList.add('btn-outline');
+      document.getElementById('tab-items').classList.remove('btn-primary');
+      document.getElementById('tab-items').classList.add('btn-outline');
+      document.getElementById('tab-ratings').classList.remove('btn-primary');
+      document.getElementById('tab-ratings').classList.add('btn-outline');
+      
+      // Show selected report
+      document.getElementById(`report-${reportType}`).classList.remove('hidden');
+      document.getElementById(`tab-${reportType}`).classList.remove('btn-outline');
+      document.getElementById(`tab-${reportType}`).classList.add('btn-primary');
+      
+      currentReport = reportType;
+    }
+    
+    async function loadReports() {
+      const startDate = document.getElementById('startDate').value;
+      const endDate = document.getElementById('endDate').value;
+      
+      if (!startDate || !endDate) {
+        alert('Please select both start and end dates.');
+        return;
+      }
+      
+      // Load all reports
+      await Promise.all([
+        loadCustomerReport(startDate, endDate),
+        loadItemsReport(startDate, endDate),
+        loadRatingsReport(startDate, endDate)
+      ]);
+    }
+    
+    async function loadCustomerReport(startDate, endDate) {
+      try {
+        const res = await fetch(`/api/reports/customer-order-values?start_date=${startDate}&end_date=${endDate}T23:59:59`);
+        const data = await res.json();
+        
+        if (data.length === 0) {
+          document.getElementById('customers-content').innerHTML = '<p class="text-muted">No data for this period.</p>';
+          return;
+        }
+        
+        let html = `
+          <table class="table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Customer</th>
+                <th>WhatsApp</th>
+                <th>Orders</th>
+                <th>Total Value</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+        
+        data.forEach((row, i) => {
+          html += `
+            <tr>
+              <td>${i + 1}</td>
+              <td>${row.name || 'N/A'}</td>
+              <td>${row.whatsapp_number}</td>
+              <td>${row.total_orders}</td>
+              <td>₹${parseFloat(row.total_value).toFixed(0)}</td>
+            </tr>
+          `;
+        });
+        
+        html += '</tbody></table>';
+        document.getElementById('customers-content').innerHTML = html;
+        
+        // Update download link
+        document.getElementById('download-customers').href = 
+          `/api/reports/customer-order-values?start_date=${startDate}&end_date=${endDate}T23:59:59&format=pdf`;
+          
+      } catch (error) {
+        console.error('Error loading customer report:', error);
+      }
+    }
+    
+    async function loadItemsReport(startDate, endDate) {
+      try {
+        const res = await fetch(`/api/reports/item-order-counts?start_date=${startDate}&end_date=${endDate}T23:59:59`);
+        const data = await res.json();
+        
+        if (data.length === 0) {
+          document.getElementById('items-content').innerHTML = '<p class="text-muted">No data for this period.</p>';
+          return;
+        }
+        
+        let html = `
+          <table class="table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Item Name</th>
+                <th>Order Count</th>
+                <th>Total Quantity</th>
+                <th>Revenue</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+        
+        data.forEach((row, i) => {
+          html += `
+            <tr>
+              <td>${i + 1}</td>
+              <td>${row.name}</td>
+              <td>${row.order_count}</td>
+              <td>${row.total_quantity}</td>
+              <td>₹${parseFloat(row.total_revenue).toFixed(0)}</td>
+            </tr>
+          `;
+        });
+        
+        html += '</tbody></table>';
+        document.getElementById('items-content').innerHTML = html;
+        
+        // Update download link
+        document.getElementById('download-items').href = 
+          `/api/reports/item-order-counts?start_date=${startDate}&end_date=${endDate}T23:59:59&format=pdf`;
+          
+      } catch (error) {
+        console.error('Error loading items report:', error);
+      }
+    }
+    
+    async function loadRatingsReport(startDate, endDate) {
+      try {
+        const res = await fetch(`/api/reports/item-ratings?start_date=${startDate}&end_date=${endDate}T23:59:59`);
+        const data = await res.json();
+        
+        if (data.length === 0) {
+          document.getElementById('ratings-content').innerHTML = '<p class="text-muted">No reviews for this period.</p>';
+          return;
+        }
+        
+        let html = `
+          <table class="table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Item Name</th>
+                <th>Reviews</th>
+                <th>Average Rating</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+        
+        data.forEach((row, i) => {
+          const stars = '⭐'.repeat(Math.round(row.average_rating));
+          html += `
+            <tr>
+              <td>${i + 1}</td>
+              <td>${row.name}</td>
+              <td>${row.review_count}</td>
+              <td>${stars} (${row.average_rating})</td>
+            </tr>
+          `;
+        });
+        
+        html += '</tbody></table>';
+        document.getElementById('ratings-content').innerHTML = html;
+        
+        // Update download link
+        document.getElementById('download-ratings').href = 
+          `/api/reports/item-ratings?start_date=${startDate}&end_date=${endDate}T23:59:59&format=pdf`;
+          
+      } catch (error) {
+        console.error('Error loading ratings report:', error);
+      }
+    }
+    
+    function downloadPDF(reportType) {
+      // The href is already set, so clicking will download
+      // This function is here for potential future enhancements
+    }
+  </script>
+</body>
+</html>
+

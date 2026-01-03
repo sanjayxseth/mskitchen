@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Menu - Ms Kitchen</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <div class="header-nav">
+        <h1>🍳 Ms Kitchen</h1>
+        <nav class="nav-links">
+          <a href="/admin">Dashboard</a>
+          <a href="/admin/menu" class="active">Create Menu</a>
+          <a href="/admin/orders">Orders</a>
+          <a href="/admin/reports">Reports</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main class="container" style="padding: 30px 20px;">
+    <h2 style="margin-bottom: 20px;">Create Daily Menu</h2>
+    
+    <div id="alertBox"></div>
+    
+    <div class="card">
+      <form id="menuForm">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="date">Date</label>
+            <input type="date" id="date" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label for="deliveryStart">Delivery Start Time</label>
+            <input type="time" id="deliveryStart" class="form-control" value="18:00" required>
+          </div>
+          <div class="form-group">
+            <label for="deliveryEnd">Delivery End Time</label>
+            <input type="time" id="deliveryEnd" class="form-control" value="21:00" required>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="upiPhone">UPI Phone Number</label>
+          <input type="tel" id="upiPhone" class="form-control" placeholder="e.g., 9876543210" required>
+        </div>
+        
+        <div class="card-header" style="margin-top: 30px;">
+          <h3>Menu Items</h3>
+          <button type="button" class="btn btn-sm btn-primary" onclick="addMenuItem()">➕ Add Item</button>
+        </div>
+        
+        <div id="menuItemsList" class="menu-items-list">
+          <!-- Menu items will be added here -->
+        </div>
+        
+        <div style="margin-top: 30px; display: flex; gap: 15px;">
+          <button type="submit" class="btn btn-primary btn-lg">💾 Save Menu</button>
+          <button type="button" class="btn btn-success btn-lg" onclick="generateWhatsAppMessage()" id="generateBtn" disabled>
+            📱 Generate WhatsApp Message
+          </button>
+        </div>
+      </form>
+    </div>
+    
+    <!-- WhatsApp Share Section -->
+    <div id="whatsappSection" class="whatsapp-share-box hidden">
+      <h3>📱 WhatsApp Message</h3>
+      <pre class="whatsapp-message-preview" id="whatsappPreview"></pre>
+      <a href="#" id="whatsappShareLink" class="whatsapp-share-btn" target="_blank">
+        📤 Share on WhatsApp
+      </a>
+      <button type="button" class="btn btn-secondary" onclick="copyToClipboard()" style="margin-left: 10px;">
+        📋 Copy Message
+      </button>
+    </div>
+  </main>
+
+  <script>
+    let menuItems = [];
+    let savedMenuId = null;
+    
+    // Set default date to today
+    document.getElementById('date').valueAsDate = new Date();
+    
+    // Add initial menu item
+    addMenuItem();
+    
+    function addMenuItem() {
+      const index = menuItems.length;
+      menuItems.push({ name: '', price: '', quantity: '' });
+      
+      const html = `
+        <div class="menu-item-row" id="menuItem${index}">
+          <input type="text" placeholder="Item name" id="itemName${index}" required>
+          <input type="number" placeholder="Price (₹)" id="itemPrice${index}" min="0" step="1" required>
+          <input type="number" placeholder="Qty" id="itemQty${index}" min="1" value="10" required>
+          <button type="button" class="remove-item-btn" onclick="removeMenuItem(${index})">×</button>
+        </div>
+      `;
+      
+      document.getElementById('menuItemsList').insertAdjacentHTML('beforeend', html);
+    }
+    
+    function removeMenuItem(index) {
+      const element = document.getElementById(`menuItem${index}`);
+      if (element) {
+        element.remove();
+      }
+    }
+    
+    function getMenuItems() {
+      const items = [];
+      document.querySelectorAll('.menu-item-row').forEach((row, i) => {
+        const nameInput = row.querySelector('input[placeholder="Item name"]');
+        const priceInput = row.querySelector('input[placeholder="Price (₹)"]');
+        const qtyInput = row.querySelector('input[placeholder="Qty"]');
+        
+        if (nameInput && priceInput && qtyInput && nameInput.value.trim()) {
+          items.push({
+            name: nameInput.value.trim(),
+            price: parseFloat(priceInput.value) || 0,
+            quantity_available: parseInt(qtyInput.value) || 10
+          });
+        }
+      });
+      return items;
+    }
+    
+    function showAlert(message, type = 'success') {
+      document.getElementById('alertBox').innerHTML = `
+        <div class="alert alert-${type}">${message}</div>
+      `;
+      setTimeout(() => {
+        document.getElementById('alertBox').innerHTML = '';
+      }, 5000);
+    }
+    
+    // Form submission
+    document.getElementById('menuForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const items = getMenuItems();
+      if (items.length === 0) {
+        showAlert('Please add at least one menu item.', 'error');
+        return;
+      }
+      
+      const menuData = {
+        date: document.getElementById('date').value,
+        delivery_window_start: document.getElementById('deliveryStart').value,
+        delivery_window_end: document.getElementById('deliveryEnd').value,
+        upi_phone_number: document.getElementById('upiPhone').value,
+        items: items
+      };
+      
+      try {
+        const res = await fetch('/api/menus', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(menuData)
+        });
+        
+        if (res.ok) {
+          const menu = await res.json();
+          savedMenuId = menu.id;
+          showAlert('Menu saved successfully!', 'success');
+          document.getElementById('generateBtn').disabled = false;
+        } else {
+          const error = await res.json();
+          showAlert(error.error || 'Failed to save menu.', 'error');
+        }
+      } catch (error) {
+        showAlert('Error saving menu: ' + error.message, 'error');
+      }
+    });
+    
+    function generateWhatsAppMessage() {
+      if (!savedMenuId) {
+        showAlert('Please save the menu first.', 'error');
+        return;
+      }
+      
+      const date = document.getElementById('date').value;
+      const formattedDate = new Date(date).toLocaleDateString('en-IN', { 
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' 
+      });
+      const deliveryStart = document.getElementById('deliveryStart').value;
+      const deliveryEnd = document.getElementById('deliveryEnd').value;
+      const upiPhone = document.getElementById('upiPhone').value;
+      const items = getMenuItems();
+      
+      let message = `🍳 *Ms Kitchen - Today's Menu*\n`;
+      message += `📅 ${formattedDate}\n`;
+      message += `🚚 Delivery: ${deliveryStart} - ${deliveryEnd}\n\n`;
+      message += `*Menu:*\n`;
+      
+      items.forEach((item, i) => {
+        message += `${i + 1}. ${item.name} - ₹${item.price}\n`;
+      });
+      
+      message += `\n💳 UPI: ${upiPhone}\n\n`;
+      message += `📱 *Order Now:* ${window.location.origin}/order/${savedMenuId}`;
+      
+      // Display preview
+      document.getElementById('whatsappPreview').textContent = message;
+      document.getElementById('whatsappSection').classList.remove('hidden');
+      
+      // Generate WhatsApp link
+      const encodedMessage = encodeURIComponent(message);
+      document.getElementById('whatsappShareLink').href = `https://wa.me/?text=${encodedMessage}`;
+    }
+    
+    function copyToClipboard() {
+      const message = document.getElementById('whatsappPreview').textContent;
+      navigator.clipboard.writeText(message).then(() => {
+        showAlert('Message copied to clipboard!', 'success');
+      }).catch(() => {
+        showAlert('Failed to copy message.', 'error');
+      });
+    }
+    
+    // Load existing menu for today if any
+    async function loadExistingMenu() {
+      const today = new Date().toISOString().split('T')[0];
+      try {
+        const res = await fetch(`/api/menus/date/${today}`);
+        if (res.ok) {
+          const menu = await res.json();
+          savedMenuId = menu.id;
+          
+          // Populate form
+          document.getElementById('date').value = menu.date;
+          document.getElementById('deliveryStart').value = menu.delivery_window_start;
+          document.getElementById('deliveryEnd').value = menu.delivery_window_end;
+          document.getElementById('upiPhone').value = menu.upi_phone_number;
+          
+          // Clear and add items
+          document.getElementById('menuItemsList').innerHTML = '';
+          menuItems = [];
+          
+          if (menu.items && menu.items.length > 0) {
+            menu.items.forEach((item, i) => {
+              addMenuItem();
+              document.getElementById(`itemName${i}`).value = item.name;
+              document.getElementById(`itemPrice${i}`).value = item.price;
+              document.getElementById(`itemQty${i}`).value = item.quantity_available;
+            });
+          } else {
+            addMenuItem();
+          }
+          
+          document.getElementById('generateBtn').disabled = false;
+          showAlert('Loaded existing menu for today.', 'info');
+        }
+      } catch (e) {
+        // No existing menu, that's fine
+      }
+    }
+    
+    loadExistingMenu();
+  </script>
+</body>
+</html>
+

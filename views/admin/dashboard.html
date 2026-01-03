@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ms Kitchen - Admin Dashboard</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <div class="header-nav">
+        <h1>🍳 Ms Kitchen</h1>
+        <nav class="nav-links">
+          <a href="/admin" class="active">Dashboard</a>
+          <a href="/admin/menu">Create Menu</a>
+          <a href="/admin/orders">Orders</a>
+          <a href="/admin/reports">Reports</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main class="container" style="padding: 30px 20px;">
+    <h2 style="margin-bottom: 20px;">Dashboard</h2>
+    
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="todayOrders">0</div>
+        <div class="stat-label">Today's Orders</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="todayRevenue">₹0</div>
+        <div class="stat-label">Today's Revenue</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="pendingPayments">0</div>
+        <div class="stat-label">Pending Payments</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="totalCustomers">0</div>
+        <div class="stat-label">Total Customers</div>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Quick Actions</h2>
+      </div>
+      <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+        <a href="/admin/menu" class="btn btn-primary">➕ Create Today's Menu</a>
+        <a href="/admin/orders" class="btn btn-secondary">📋 View Orders</a>
+        <a href="/admin/reports" class="btn btn-outline">📊 View Reports</a>
+      </div>
+    </div>
+
+    <!-- Today's Menu -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Today's Menu</h2>
+        <a href="/admin/menu" class="btn btn-sm btn-primary">Edit Menu</a>
+      </div>
+      <div id="todayMenuContent">
+        <p class="text-muted">Loading...</p>
+      </div>
+    </div>
+
+    <!-- Recent Orders -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Recent Orders</h2>
+        <a href="/admin/orders" class="btn btn-sm btn-outline">View All</a>
+      </div>
+      <div id="recentOrdersContent">
+        <p class="text-muted">Loading...</p>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // Load dashboard data
+    async function loadDashboard() {
+      try {
+        // Get today's date
+        const today = new Date().toISOString().split('T')[0];
+        
+        // Fetch today's menu
+        try {
+          const menuRes = await fetch(`/api/menus/date/${today}`);
+          if (menuRes.ok) {
+            const menu = await menuRes.json();
+            displayTodayMenu(menu);
+          } else {
+            document.getElementById('todayMenuContent').innerHTML = `
+              <p class="text-muted">No menu created for today.</p>
+              <a href="/admin/menu" class="btn btn-primary mt-10">Create Menu</a>
+            `;
+          }
+        } catch (e) {
+          document.getElementById('todayMenuContent').innerHTML = '<p class="text-muted">No menu for today.</p>';
+        }
+        
+        // Fetch orders
+        const ordersRes = await fetch(`/api/orders?start_date=${today}`);
+        const orders = await ordersRes.json();
+        
+        // Calculate stats
+        const todayOrders = orders.length;
+        const todayRevenue = orders.reduce((sum, o) => sum + parseFloat(o.order_value || 0), 0);
+        const pendingPayments = orders.filter(o => o.payment_status === 'pending').length;
+        
+        document.getElementById('todayOrders').textContent = todayOrders;
+        document.getElementById('todayRevenue').textContent = '₹' + todayRevenue.toFixed(0);
+        document.getElementById('pendingPayments').textContent = pendingPayments;
+        
+        // Display recent orders
+        displayRecentOrders(orders.slice(0, 5));
+        
+        // Fetch customers count
+        const customersRes = await fetch('/api/customers');
+        const customers = await customersRes.json();
+        document.getElementById('totalCustomers').textContent = customers.length;
+        
+      } catch (error) {
+        console.error('Error loading dashboard:', error);
+      }
+    }
+    
+    function displayTodayMenu(menu) {
+      if (!menu || !menu.items || menu.items.length === 0) {
+        document.getElementById('todayMenuContent').innerHTML = '<p class="text-muted">No items in today\'s menu.</p>';
+        return;
+      }
+      
+      let html = `
+        <p><strong>Delivery:</strong> ${menu.delivery_window_start} - ${menu.delivery_window_end}</p>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Price</th>
+              <th>Available</th>
+              <th>Sold</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      
+      menu.items.forEach(item => {
+        html += `
+          <tr>
+            <td>${item.name}</td>
+            <td>₹${item.price}</td>
+            <td>${item.quantity_available}</td>
+            <td>${item.quantity_sold || 0}</td>
+          </tr>
+        `;
+      });
+      
+      html += '</tbody></table>';
+      document.getElementById('todayMenuContent').innerHTML = html;
+    }
+    
+    function displayRecentOrders(orders) {
+      if (orders.length === 0) {
+        document.getElementById('recentOrdersContent').innerHTML = '<p class="text-muted">No orders yet.</p>';
+        return;
+      }
+      
+      let html = '';
+      orders.forEach(order => {
+        const statusClass = order.payment_status === 'paid' ? 'paid' : 'pending';
+        html += `
+          <div class="order-card ${statusClass}">
+            <div class="order-card-header">
+              <span class="order-id">Order #${order.id}</span>
+              <span class="order-status ${statusClass}">${order.payment_status}</span>
+            </div>
+            <div class="order-details">
+              <div class="order-detail-item">
+                <strong>Customer</strong>
+                ${order.customer_name || order.customer_whatsapp}
+              </div>
+              <div class="order-detail-item">
+                <strong>Amount</strong>
+                ₹${order.order_value}
+              </div>
+              <div class="order-detail-item">
+                <strong>Time</strong>
+                ${new Date(order.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+              </div>
+            </div>
+          </div>
+        `;
+      });
+      
+      document.getElementById('recentOrdersContent').innerHTML = html;
+    }
+    
+    // Load on page ready
+    loadDashboard();
+  </script>
+</body>
+</html>
+

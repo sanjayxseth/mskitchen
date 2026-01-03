@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Orders - Ms Kitchen</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <div class="header-nav">
+        <h1>🍳 Ms Kitchen</h1>
+        <nav class="nav-links">
+          <a href="/admin">Dashboard</a>
+          <a href="/admin/menu">Create Menu</a>
+          <a href="/admin/orders" class="active">Orders</a>
+          <a href="/admin/reports">Reports</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main class="container" style="padding: 30px 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
+      <h2>Orders</h2>
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <input type="date" id="filterDate" class="form-control" style="width: auto;">
+        <button class="btn btn-primary" onclick="loadOrders()">🔍 Filter</button>
+        <button class="btn btn-success" onclick="generatePendingPaymentsMessage()" id="pendingBtn">
+          💳 Share Pending Payments
+        </button>
+      </div>
+    </div>
+    
+    <div id="alertBox"></div>
+    
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="totalOrders">0</div>
+        <div class="stat-label">Total Orders</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="totalRevenue">₹0</div>
+        <div class="stat-label">Total Revenue</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="paidCount">0</div>
+        <div class="stat-label">Paid</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="pendingCount">0</div>
+        <div class="stat-label">Pending</div>
+      </div>
+    </div>
+    
+    <!-- Orders List -->
+    <div id="ordersContainer">
+      <p class="text-muted">Loading orders...</p>
+    </div>
+    
+    <!-- Pending Payments WhatsApp Section -->
+    <div id="pendingPaymentsSection" class="whatsapp-share-box hidden" style="margin-top: 30px;">
+      <h3>💳 Pending Payments Message</h3>
+      <pre class="whatsapp-message-preview" id="pendingPaymentsPreview"></pre>
+      <a href="#" id="pendingPaymentsShareLink" class="whatsapp-share-btn" target="_blank">
+        📤 Share on WhatsApp
+      </a>
+    </div>
+  </main>
+
+  <script>
+    let orders = [];
+    
+    // Set default date to today
+    document.getElementById('filterDate').valueAsDate = new Date();
+    
+    async function loadOrders() {
+      const date = document.getElementById('filterDate').value;
+      
+      try {
+        const res = await fetch(`/api/orders?start_date=${date}&end_date=${date}T23:59:59`);
+        orders = await res.json();
+        
+        displayOrders(orders);
+        updateStats(orders);
+      } catch (error) {
+        console.error('Error loading orders:', error);
+        document.getElementById('ordersContainer').innerHTML = '<p class="text-muted">Failed to load orders.</p>';
+      }
+    }
+    
+    function displayOrders(orders) {
+      if (orders.length === 0) {
+        document.getElementById('ordersContainer').innerHTML = '<p class="text-muted">No orders for this date.</p>';
+        return;
+      }
+      
+      let html = '';
+      orders.forEach(order => {
+        const statusClass = order.payment_status === 'paid' ? 'paid' : 'pending';
+        const itemsList = order.items ? order.items.map(i => `${i.item_name} x${i.quantity}`).join(', ') : 'N/A';
+        
+        html += `
+          <div class="order-card ${statusClass}" id="order-${order.id}">
+            <div class="order-card-header">
+              <span class="order-id">Order #${order.id}</span>
+              <div>
+                <span class="order-status ${statusClass}">${order.payment_status}</span>
+                <button class="btn btn-sm ${order.payment_status === 'paid' ? 'btn-secondary' : 'btn-success'}" 
+                        onclick="togglePayment(${order.id}, '${order.payment_status}')"
+                        style="margin-left: 10px;">
+                  ${order.payment_status === 'paid' ? '↩️ Undo' : '✅ Mark Paid'}
+                </button>
+              </div>
+            </div>
+            <div class="order-details">
+              <div class="order-detail-item">
+                <strong>Customer</strong>
+                ${order.customer_name || 'N/A'}
+              </div>
+              <div class="order-detail-item">
+                <strong>WhatsApp</strong>
+                <a href="https://wa.me/${order.customer_whatsapp?.replace(/\D/g, '')}" target="_blank">
+                  ${order.customer_whatsapp}
+                </a>
+              </div>
+              <div class="order-detail-item">
+                <strong>Address</strong>
+                ${order.customer_address || 'N/A'}
+              </div>
+              <div class="order-detail-item">
+                <strong>Amount</strong>
+                ₹${order.order_value}
+              </div>
+              <div class="order-detail-item">
+                <strong>Time</strong>
+                ${new Date(order.created_at).toLocaleTimeString('en-IN')}
+              </div>
+            </div>
+            <div class="order-items-list">
+              <strong>Items:</strong> ${itemsList}
+            </div>
+          </div>
+        `;
+      });
+      
+      document.getElementById('ordersContainer').innerHTML = html;
+    }
+    
+    function updateStats(orders) {
+      const total = orders.length;
+      const revenue = orders.reduce((sum, o) => sum + parseFloat(o.order_value || 0), 0);
+      const paid = orders.filter(o => o.payment_status === 'paid').length;
+      const pending = orders.filter(o => o.payment_status === 'pending').length;
+      
+      document.getElementById('totalOrders').textContent = total;
+      document.getElementById('totalRevenue').textContent = '₹' + revenue.toFixed(0);
+      document.getElementById('paidCount').textContent = paid;
+      document.getElementById('pendingCount').textContent = pending;
+    }
+    
+    async function togglePayment(orderId, currentStatus) {
+      const newStatus = currentStatus === 'paid' ? 'pending' : 'paid';
+      
+      try {
+        const res = await fetch(`/api/orders/${orderId}/payment`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payment_status: newStatus })
+        });
+        
+        if (res.ok) {
+          loadOrders(); // Reload orders
+        } else {
+          showAlert('Failed to update payment status.', 'error');
+        }
+      } catch (error) {
+        showAlert('Error updating payment: ' + error.message, 'error');
+      }
+    }
+    
+    function showAlert(message, type = 'success') {
+      document.getElementById('alertBox').innerHTML = `
+        <div class="alert alert-${type}">${message}</div>
+      `;
+      setTimeout(() => {
+        document.getElementById('alertBox').innerHTML = '';
+      }, 5000);
+    }
+    
+    function generatePendingPaymentsMessage() {
+      const pendingOrders = orders.filter(o => o.payment_status === 'pending');
+      
+      if (pendingOrders.length === 0) {
+        showAlert('No pending payments! 🎉', 'success');
+        document.getElementById('pendingPaymentsSection').classList.add('hidden');
+        return;
+      }
+      
+      const date = document.getElementById('filterDate').value;
+      const formattedDate = new Date(date).toLocaleDateString('en-IN');
+      
+      let message = `⚠️ *Pending Payments - ${formattedDate}*\n\n`;
+      message += `Total: ${pendingOrders.length} orders\n`;
+      message += `Amount: ₹${pendingOrders.reduce((sum, o) => sum + parseFloat(o.order_value), 0).toFixed(0)}\n\n`;
+      
+      pendingOrders.forEach((order, i) => {
+        const items = order.items ? order.items.map(it => `${it.item_name} x${it.quantity}`).join(', ') : 'N/A';
+        message += `${i + 1}. *${order.customer_name || order.customer_whatsapp}*\n`;
+        message += `   ₹${order.order_value} - ${items}\n\n`;
+      });
+      
+      document.getElementById('pendingPaymentsPreview').textContent = message;
+      document.getElementById('pendingPaymentsSection').classList.remove('hidden');
+      
+      const encodedMessage = encodeURIComponent(message);
+      document.getElementById('pendingPaymentsShareLink').href = `https://wa.me/?text=${encodedMessage}`;
+    }
+    
+    // Load orders on page load
+    loadOrders();
+  </script>
+</body>
+</html>
+
